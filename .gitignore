@@ -1,0 +1,6 @@
+*.log
+*.gz
+.DS_Store
+.env
+*.swp
+*~
