@@ -14,13 +14,16 @@ on:
       - "slow-mysqlqueries/**"
       - ".github/workflows/slow-mysqlqueries-*.yml"
 
+env:
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
 permissions:
   contents: read
   pull-requests: read
 
 jobs:
   sonar:
-    if: ${{ secrets.SONAR_TOKEN != '' }}
+    if: ${{ env.SONAR_TOKEN != '' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +43,6 @@ jobs:
       - name: SonarQube Cloud scan
         uses: SonarSource/sonarqube-scan-action@v7
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
         with:
           projectBaseDir: slow-mysqlqueries/new-version1
-
