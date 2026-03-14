@@ -1,0 +1,25 @@
+/usr/sbin/mysqld, Version: 8.0.43 (MySQL Community Server - GPL). started with:
+Tcp port: 3306  Unix socket: /var/lib/mysql/mysql.sock
+Time                 Id Command    Argument
+# Time: 2025-08-03T02:06:53.286964Z
+# User@Host: root[root] @ localhost []  Id: 45671
+# Query_time: 15.899672  Lock_time: 0.000001 Rows_sent: 742117 Rows_examined: 742117
+use easternm_easternmeat;
+SET timestamp=1753582353;
+SELECT /*!40001 SQL_NO_CACHE */ * FROM `notifications`;
+# Time: 2025-08-04T00:00:59.608430Z
+# User@Host: gdbltdne_stagingnode49[gdbltdne_stagingnode49] @ localhost []  Id: 45575
+# Query_time: 3.047573  Lock_time: 0.000001 Rows_sent: 966 Rows_examined: 1504
+use gdbltdne_stagingnode49;
+SET timestamp=1753582400;
+SELECT HEX(`email`) AS a FROM `gdbltdne_stagingnode49`.`visitors` WHERE `score` > 10;
+# Time: 2025-08-05T01:01:01.000000Z
+# User@Host: root[root] @ localhost []  Id: 50000
+# Query_time: 5.432100  Lock_time: 0.000001 Rows_sent: 50 Rows_examined: 2500
+use mysql;
+SET timestamp=1753664461;
+SELECT table_schema AS db, SUM(data_length)+SUM(index_length) AS spaceused
+FROM information_schema.tables
+WHERE table_type NOT LIKE 'VIEW'
+GROUP BY table_schema;
+

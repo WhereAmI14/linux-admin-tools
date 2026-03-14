@@ -1,6 +1,3 @@
-*.log
-*.gz
-.DS_Store
-.env
-*.swp
-*~
+__pycache__/
+*.py[cod]
+slow-mysqlqueries/mysql_slow.log
