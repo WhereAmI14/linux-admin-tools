@@ -14,35 +14,52 @@ on:
       - "slow-mysqlqueries/**"
       - ".github/workflows/slow-mysqlqueries-*.yml"
 
-env:
-  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
 permissions:
   contents: read
   pull-requests: read
 
 jobs:
   sonar:
-    if: ${{ env.SONAR_TOKEN != '' }}
     runs-on: ubuntu-latest
 
     steps:
+      - name: Detect Sonar token
+        id: sonar-token
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "SONAR_TOKEN is not set. SonarQube Cloud scan will be skipped."
+          fi
+
       - name: Check out repository
+        if: steps.sonar-token.outputs.present == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
+        if: steps.sonar-token.outputs.present == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Run tests before analysis
+        if: steps.sonar-token.outputs.present == 'true'
         run: python -m unittest discover -s slow-mysqlqueries/new-version1/tests -v
 
       - name: SonarQube Cloud scan
+        if: steps.sonar-token.outputs.present == 'true'
         uses: SonarSource/sonarqube-scan-action@v7
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           projectBaseDir: slow-mysqlqueries/new-version1
+
+      - name: Skip SonarQube Cloud scan
+        if: steps.sonar-token.outputs.present != 'true'
+        run: echo "Skipping SonarQube Cloud scan because SONAR_TOKEN is not configured."
