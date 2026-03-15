@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 slow-mysqlqueries/mysql_slow.log
+slow-mysqlqueries/slow_queries_per_user-forOLD_MySQL.sh
+slow-mysqlqueries/slow_querires_for_all.sh
