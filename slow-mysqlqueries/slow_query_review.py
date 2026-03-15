@@ -13,7 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -38,9 +38,7 @@ TIME_FORMATS = (
     "%Y-%m-%dT%H:%M:%SZ",
 )
 TIMEFRAME_RE = re.compile(r"^\s*(\d+)\s*([a-zA-Z]+)\s*$")
-USER_HOST_RE = re.compile(
-    r"^# User@Host: ([^\[]+)\[([^\]]*)\] @ ([^ ]+) \[[^\]]*\]\s+Id:\s*(\d+)"
-)
+USER_HOST_RE = re.compile(r"^# User@Host: ([^\[]+)\[([^\]]*)\] @ ([^ ]+) \[[^\]]*\]\s+Id:\s*(\d+)")
 QUERY_STATS_RE = re.compile(
     r"^# Query_time:\s*([0-9.]+)\s+Lock_time:\s*([0-9.]+)\s+"
     r"Rows_sent:\s*(\d+)\s+Rows_examined:\s*(\d+)"
@@ -86,9 +84,7 @@ class Palette:
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Review MySQL slow queries and summarize them by cPanel owner."
-    )
+    parser = argparse.ArgumentParser(description="Review MySQL slow queries and summarize them by cPanel owner.")
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--user", help="Review slow queries for a single cPanel user.")
     target.add_argument(
@@ -98,8 +94,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--log-file",
-        help="Path to the slow query log. Defaults to auto-detection or %s."
-        % DEFAULT_LOG_PATH,
+        help="Path to the slow query log. Defaults to auto-detection or %s." % DEFAULT_LOG_PATH,
     )
     parser.add_argument(
         "--since",
@@ -122,10 +117,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--report-dir",
-        help=(
-            "Optional directory used instead of /home/<cpuser> when "
-            "--write-user-reports is enabled."
-        ),
+        help=("Optional directory used instead of /home/<cpuser> when --write-user-reports is enabled."),
     )
     parser.add_argument(
         "--include-system",
@@ -153,10 +145,7 @@ def parse_timeframe(value: str) -> Optional[timedelta]:
 
     match = TIMEFRAME_RE.match(normalized)
     if not match:
-        raise ValueError(
-            'Invalid timeframe "%s". Expected values like 24h, 3 days, 2w, or all.'
-            % value
-        )
+        raise ValueError('Invalid timeframe "%s". Expected values like 24h, 3 days, 2w, or all.' % value)
 
     amount = int(match.group(1))
     unit = match.group(2)
@@ -415,9 +404,7 @@ def finalize_record(
         lock_time=float(current["lock_time"]),
         rows_sent=int(current["rows_sent"]),
         rows_examined=int(current["rows_examined"]),
-        database=(
-            str(current["database"]) if current.get("database") not in (None, "") else None
-        ),
+        database=(str(current["database"]) if current.get("database") not in (None, "") else None),
         sql=sql or "(empty statement)",
         execution_owner=execution_owner,
         attributed_owner=attributed_owner,
@@ -453,9 +440,7 @@ def filter_records(
         ]
 
     if not include_system and cpanel_user is None:
-        filtered = [
-            record for record in filtered if record.attributed_owner != SYSTEM_OWNER
-        ]
+        filtered = [record for record in filtered if record.attributed_owner != SYSTEM_OWNER]
 
     return filtered
 
@@ -488,9 +473,7 @@ def summarize(records: Sequence[SlowQueryRecord]) -> Dict[str, object]:
     }
 
 
-def build_fingerprint_stats(
-    records: Sequence[SlowQueryRecord], top_n: int
-) -> List[Tuple[str, int, float, int]]:
+def build_fingerprint_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tuple[str, int, float, int]]:
     stats = {}
     for record in records:
         fingerprint = normalize_sql(record.sql)
@@ -504,15 +487,10 @@ def build_fingerprint_stats(
         stats.items(),
         key=lambda item: (-item[1]["count"], -item[1]["max"], item[0]),
     )
-    return [
-        (fingerprint, data["count"], data["max"], data["rows"])
-        for fingerprint, data in sorted_stats[:top_n]
-    ]
+    return [(fingerprint, data["count"], data["max"], data["rows"]) for fingerprint, data in sorted_stats[:top_n]]
 
 
-def build_owner_stats(
-    records: Sequence[SlowQueryRecord], top_n: int
-) -> List[Tuple[str, int, float, float]]:
+def build_owner_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tuple[str, int, float, float]]:
     buckets = defaultdict(list)
     for record in records:
         buckets[record.attributed_owner].append(record)
@@ -565,20 +543,14 @@ def render_summary(
     lines.append("Average query time:      %s" % format_seconds(summary["average_query_time"]))
     lines.append("P95 query time:          %s" % format_seconds(summary["p95_query_time"]))
     lines.append("Slowest query:           %s" % format_seconds(summary["max_query_time"]))
-    lines.append(
-        "Rows examined total:     %s"
-        % "{:,}".format(int(summary["rows_examined_total"]))
-    )
+    lines.append("Rows examined total:     %s" % "{:,}".format(int(summary["rows_examined_total"])))
 
     if include_owner_breakdown and records:
         lines.append("")
         lines.append(palette.color("Top cPanel owners", palette.accent))
         lines.append("-" * 17)
         for owner, count, total, maximum in build_owner_stats(records, top_n):
-            lines.append(
-                "%-20s %5d queries   %10.3f sec total   max %7.3f sec"
-                % (owner, count, total, maximum)
-            )
+            lines.append("%-20s %5d queries   %10.3f sec total   max %7.3f sec" % (owner, count, total, maximum))
 
     fingerprints = build_fingerprint_stats(records, top_n)
     if fingerprints:
@@ -586,10 +558,7 @@ def render_summary(
         lines.append(palette.color("Top query fingerprints", palette.accent))
         lines.append("-" * 22)
         for index, (fingerprint, count, maximum, rows) in enumerate(fingerprints, 1):
-            lines.append(
-                "%d. %4dx   max %7.3f sec   rows_examined %s"
-                % (index, count, maximum, "{:,}".format(rows))
-            )
+            lines.append("%d. %4dx   max %7.3f sec   rows_examined %s" % (index, count, maximum, "{:,}".format(rows)))
             lines.append("   %s" % truncate(fingerprint, 110))
 
     slowest = sorted(records, key=lambda record: record.query_time, reverse=True)[:top_n]
@@ -646,9 +615,7 @@ def write_reports(
         try:
             os.makedirs(output_dir, exist_ok=True)
         except OSError as exc:
-            written_paths.append(
-                "Skipped %s report: unable to create %s (%s)" % (owner, output_dir, exc)
-            )
+            written_paths.append("Skipped %s report: unable to create %s (%s)" % (owner, output_dir, exc))
             continue
 
         filename = "slow-query-report-%s.txt" % datetime.now().strftime("%d-%b-%Y")
@@ -680,9 +647,7 @@ def group_by_owner(records: Sequence[SlowQueryRecord]) -> Dict[str, List[SlowQue
     return grouped
 
 
-def attach_report_dir(
-    grouped_records: Dict[str, List[SlowQueryRecord]], report_dir: Optional[str]
-) -> None:
+def attach_report_dir(grouped_records: Dict[str, List[SlowQueryRecord]], report_dir: Optional[str]) -> None:
     if not report_dir:
         return
     for records in grouped_records.values():
@@ -723,8 +688,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         scope = "user %s" % args.user if args.user else "all users"
         print(
             palette.color(
-                "No slow query records matched %s with timeframe %s."
-                % (scope, args.since),
+                "No slow query records matched %s with timeframe %s." % (scope, args.since),
                 palette.warn,
             )
         )

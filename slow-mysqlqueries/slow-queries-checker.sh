@@ -4,7 +4,7 @@ set -euo pipefail
 OWNER="${SLOW_QUERY_REVIEW_OWNER:-WhereAmI14}"
 REPO="${SLOW_QUERY_REVIEW_REPO:-linux-admin-tools}"
 REF="${SLOW_QUERY_REVIEW_REF:-dev}"
-SCRIPT_PATH="slow-mysqlqueries/new-version1/slow_query_review.py"
+SCRIPT_PATH="slow-mysqlqueries/slow_query_review.py"
 RAW_URL="https://raw.githubusercontent.com/${OWNER}/${REPO}/${REF}/${SCRIPT_PATH}"
 
 if ! command -v python3 >/dev/null 2>&1; then
