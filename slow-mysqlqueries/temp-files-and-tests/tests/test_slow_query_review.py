@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 TESTS_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = TESTS_DIR.parent
+PROJECT_DIR = TESTS_DIR.parent.parent
 SCRIPT_PATH = PROJECT_DIR / "slow_query_review.py"
 FIXTURE_PATH = TESTS_DIR / "fixtures" / "sample_slow.log"
 
