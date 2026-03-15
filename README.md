@@ -1,42 +1,27 @@
 # linux-admin-tools
 
-A collection of focused Bash utilities for Linux system administration tasks.
-
-Scripts are organized by category. Each subdirectory contains its own README with usage details.
-
----
+Small admin scripts for Linux and cPanel servers.
 
 ## Tools
 
-### disk/
+- `inode-check/`: inode usage report for a target directory
+- `slow-mysqlqueries/`: MySQL slow-query review tool for cPanel accounts
 
-| Script | Description |
-|--------|-------------|
-| [inode-check.sh](disk/inode-check.sh) | Reports inode usage for a target directory — totals, per-subdirectory breakdown, and top folders by direct entry count |
-
----
-
-## Requirements
-
-- Bash 4+
-- GNU coreutils (`du`, `find`, `sort`, `awk`)
-
-Individual scripts may have additional requirements listed in their own README.
-
----
-
-## Usage
-
-Clone the repo and run scripts directly:
+## Quick Use
 
 ```bash
 git clone https://github.com/WhereAmI14/linux-admin-tools.git
 cd linux-admin-tools
-bash disk/inode-check.sh [target_dir] [top_n]
 ```
 
----
+Inode check:
 
-## License
+```bash
+bash inode-check/inode-check.sh
+```
 
-MIT
+Slow MySQL queries:
+
+```bash
+python3 slow-mysqlqueries/slow_query_review.py
+```

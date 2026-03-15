@@ -1,41 +1,24 @@
 # inode-check
 
-Reports inode usage for a target directory.
+Shows inode usage for a directory.
 
-## What It Shows
+## Use
 
-- total inodes under the target
-- recursive inode totals for immediate subdirectories
-- top folders by direct entry count
-
-## Usage
+Local:
 
 ```bash
 bash inode-check.sh [target_dir] [top_n]
 ```
 
-Run directly from GitHub and let it prompt for the target directory:
+From GitHub:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/inode-check/inode-check.sh | bash
-```
-
-Pass a target directory from `curl | bash`:
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/inode-check/inode-check.sh | bash -s -- public_html
-curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/inode-check/inode-check.sh | bash -s -- --target-dir public_html
 ```
 
-## Arguments
+## Notes
 
-- `target_dir`: directory to inspect, defaults to the current directory
-- `top_n`: number of folders to show in the direct-entry ranking, defaults to `10`
-- `--target-dir`, `-d`: named form of `target_dir`
-- `--top`, `-n`: named form of `top_n`
-
-## Requirements
-
-- `bash`
-- GNU `du` with `--inodes`
-- `find`, `awk`, `sort`
+- If no directory is given, the script prompts for one.
+- `top_n` defaults to `10`.
+- Requires GNU `du` with `--inodes`.
