@@ -15,6 +15,7 @@ class Palette:
     def __init__(self, enabled: bool) -> None:
         self.enabled = enabled
         self.reset = "\033[0m" if enabled else ""
+        self.bold = "\033[1m" if enabled else ""
         self.header = "\033[1;38;5;39m" if enabled else ""
         self.label = "\033[1;38;5;81m" if enabled else ""
         self.good = "\033[38;5;82m" if enabled else ""
@@ -112,7 +113,12 @@ def render_summary(
         lines.append("")
         lines.append(palette.color("cPanel accounts with slow queries", palette.accent))
         lines.append("-" * 33)
-        lines.append("%-20s %8s   %14s   %12s" % ("ACCOUNT", "QUERIES", "TOTAL TIME", "SLOWEST"))
+        lines.append(
+            palette.color(
+                "%-20s %8s   %14s   %12s" % ("ACCOUNT", "QUERIES", "TOTAL TIME", "SLOWEST"),
+                palette.bold,
+            )
+        )
         for owner, count, total, maximum in build_owner_stats(records, top_n):
             lines.append("%-20s %8d   %14s   %12s" % (owner, count, format_seconds(total), format_seconds(maximum)))
 
@@ -121,7 +127,12 @@ def render_summary(
         lines.append("")
         lines.append(palette.color("Databases with the most slow queries", palette.accent))
         lines.append("-" * 36)
-        lines.append("%-30s %8s   %12s" % ("DATABASE", "QUERIES", "SLOWEST"))
+        lines.append(
+            palette.color(
+                "%-30s %8s   %12s" % ("DATABASE", "QUERIES", "SLOWEST"),
+                palette.bold,
+            )
+        )
         for database, count, maximum in database_rows:
             lines.append("%-30s %8d   %12s" % (truncate(database, 30), count, format_seconds(maximum)))
 
