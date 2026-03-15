@@ -33,6 +33,12 @@ class SlowQueryReviewTests(unittest.TestCase):
         self.assertEqual(self.tool.parse_timeframe("3 days").total_seconds(), 3 * 86400)
         self.assertEqual(self.tool.parse_timeframe("2w").total_seconds(), 14 * 86400)
 
+    def test_parse_interval_time_variants(self):
+        parsed = self.tool.parse_interval_time("2025-08-03 00:00")
+        self.assertEqual(parsed.strftime("%Y-%m-%d %H:%M:%S %Z"), "2025-08-03 00:00:00 UTC")
+        parsed_z = self.tool.parse_interval_time("2025-08-03T02:06:53Z")
+        self.assertEqual(parsed_z.strftime("%Y-%m-%d %H:%M:%S %Z"), "2025-08-03 02:06:53 UTC")
+
     def test_parse_slow_log_attributes_root_query_to_database_owner(self):
         records = self.tool.parse_slow_log(str(FIXTURE_PATH), ["easternm", "gdbltdne"])
         self.assertEqual(len(records), 3)
@@ -55,11 +61,26 @@ class SlowQueryReviewTests(unittest.TestCase):
         filtered = self.tool.filter_records(
             records,
             since_delta=None,
+            from_time=None,
+            to_time=None,
             cpanel_user="easternm",
             include_system=False,
         )
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0].attributed_owner, "easternm")
+
+    def test_filter_records_for_absolute_interval(self):
+        records = self.tool.parse_slow_log(str(FIXTURE_PATH), ["easternm", "gdbltdne"])
+        filtered = self.tool.filter_records(
+            records,
+            since_delta=None,
+            from_time=self.tool.parse_interval_time("2025-08-04 00:00"),
+            to_time=self.tool.parse_interval_time("2025-08-04 23:59:59"),
+            cpanel_user=None,
+            include_system=True,
+        )
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0].attributed_owner, "gdbltdne")
 
     def test_prompt_for_target_blank_input_scans_all_users(self):
         args = self.tool.parse_args(["--log-file", str(FIXTURE_PATH), "--no-color"])
@@ -96,10 +117,40 @@ class SlowQueryReviewTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Summary", result.stdout)
-        self.assertIn("Top cPanel owners", result.stdout)
+        self.assertIn("cPanel accounts with slow queries", result.stdout)
+        self.assertIn("ACCOUNT", result.stdout)
         self.assertIn("easternm", result.stdout)
         self.assertIn("gdbltdne", result.stdout)
+        self.assertIn("slowest queries for the selected scope/time filter", result.stdout)
         self.assertNotIn("(system/root)            ", result.stdout)
+        self.assertNotIn("Top query fingerprints", result.stdout)
+        self.assertNotIn("Total query time:", result.stdout)
+        self.assertNotIn("P95 query time:", result.stdout)
+        self.assertNotIn("Rows examined total:", result.stdout)
+
+    def test_cli_can_filter_with_absolute_interval(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "--all-users",
+                "--from",
+                "2025-08-04 00:00",
+                "--to",
+                "2025-08-04 23:59:59",
+                "--log-file",
+                str(FIXTURE_PATH),
+                "--no-color",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("2025-08-04 00:00:00 UTC -> 2025-08-04 23:59:59 UTC", result.stdout)
+        self.assertIn("gdbltdne", result.stdout)
+        self.assertNotIn("easternm", result.stdout)
 
     def test_cli_can_write_analytical_report(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -126,7 +177,8 @@ class SlowQueryReviewTests(unittest.TestCase):
             self.assertEqual(len(generated), 1)
             report_text = generated[0].read_text(encoding="utf-8")
             self.assertIn("single user (easternm)", report_text)
-            self.assertIn("Top query fingerprints", report_text)
+            self.assertIn("slowest queries for the selected scope/time filter", report_text)
+            self.assertNotIn("Top query fingerprints", report_text)
 
 
 if __name__ == "__main__":

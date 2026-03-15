@@ -43,6 +43,13 @@ python3 slow_query_review.py --all-users --since 7d
 python3 slow_query_review.py --user easternm --since "3 days"
 ```
 
+Limit by an absolute interval:
+
+```bash
+python3 slow_query_review.py --all-users --from "2025-08-03 00:00" --to "2025-08-04 23:59:59"
+python3 slow_query_review.py --user easternm --from "2025-08-03T00:00:00Z" --to "2025-08-03T12:00:00Z"
+```
+
 Use a custom log path:
 
 ```bash
@@ -90,3 +97,4 @@ To enable SonarQube Cloud analysis, add a repository secret named `SONAR_TOKEN`.
 - Attribution prefers the selected database name when it maps cleanly to a cPanel owner. This helps catch queries executed as `root` against a user's database.
 - If no cPanel account list is available, the tool falls back to prefix-based owner detection.
 - `--include-system` keeps unattributed/system-level queries in the all-user summary. Without it, the all-user view focuses on cPanel-owned activity.
+- `--from` and `--to` use UTC. If you omit the timezone in the value, the tool treats it as UTC.

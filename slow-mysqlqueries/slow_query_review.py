@@ -7,7 +7,6 @@ Compatible with Python 3.8 through 3.12.
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import re
 import shutil
@@ -36,6 +35,15 @@ SERVER_NOISE_PREFIXES = (
 TIME_FORMATS = (
     "%Y-%m-%dT%H:%M:%S.%fZ",
     "%Y-%m-%dT%H:%M:%SZ",
+)
+INTERVAL_TIME_FORMATS = (
+    "%Y-%m-%dT%H:%M:%S.%fZ",
+    "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%d",
 )
 TIMEFRAME_RE = re.compile(r"^\s*(\d+)\s*([a-zA-Z]+)\s*$")
 USER_HOST_RE = re.compile(r"^# User@Host: ([^\[]+)\[([^\]]*)\] @ ([^ ]+) \[[^\]]*\]\s+Id:\s*(\d+)")
@@ -102,10 +110,20 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help='Timeframe filter such as "24h", "3 days", "2w", or "all".',
     )
     parser.add_argument(
+        "--from",
+        dest="from_time",
+        help='Absolute interval start in UTC, for example "2025-08-03 00:00" or "2025-08-03T00:00:00Z".',
+    )
+    parser.add_argument(
+        "--to",
+        dest="to_time",
+        help='Absolute interval end in UTC, for example "2025-08-04 00:00" or "2025-08-04T23:59:59Z".',
+    )
+    parser.add_argument(
         "--top",
         type=int,
         default=10,
-        help="Number of entries to show in top slow queries and fingerprints.",
+        help="Number of slow queries to show in the detailed section.",
     )
     parser.add_argument(
         "--write-user-reports",
@@ -204,6 +222,34 @@ def parse_timeframe(value: str) -> Optional[timedelta]:
     raise ValueError('Unsupported timeframe unit "%s".' % unit)
 
 
+def parse_interval_time(value: Optional[str]) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        pass
+
+    for fmt in INTERVAL_TIME_FORMATS:
+        try:
+            return datetime.strptime(normalized, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
+    raise ValueError(
+        'Invalid interval time "%s". Use formats like 2025-08-03 00:00, '
+        "2025-08-03T00:00:00, or 2025-08-03T00:00:00Z." % value
+    )
+
+
 def parse_log_timestamp(value: str) -> datetime:
     for fmt in TIME_FORMATS:
         try:
@@ -283,16 +329,6 @@ def parse_whmapi_users(payload: str) -> Iterable[str]:
             if user:
                 results.append(str(user))
     return results
-
-
-def normalize_sql(sql: str) -> str:
-    normalized = sql.lower()
-    normalized = re.sub(r"/\*![0-9]+\s*sql_no_cache\s*\*/", "SQL_NO_CACHE", normalized)
-    normalized = re.sub(r"`[^`]+`", "`?`", normalized)
-    normalized = re.sub(r"'[^']*'", "?", normalized)
-    normalized = re.sub(r"\b\d+\b", "?", normalized)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    return normalized or "(empty statement)"
 
 
 def extract_qualified_database(sql: str) -> Optional[str]:
@@ -460,6 +496,8 @@ def finalize_record(
 def filter_records(
     records: Sequence[SlowQueryRecord],
     since_delta: Optional[timedelta],
+    from_time: Optional[datetime],
+    to_time: Optional[datetime],
     cpanel_user: Optional[str],
     include_system: bool,
 ) -> List[SlowQueryRecord]:
@@ -468,6 +506,12 @@ def filter_records(
     if since_delta is not None:
         cutoff = datetime.now(timezone.utc) - since_delta
         filtered = [record for record in filtered if record.timestamp >= cutoff]
+
+    if from_time is not None:
+        filtered = [record for record in filtered if record.timestamp >= from_time]
+
+    if to_time is not None:
+        filtered = [record for record in filtered if record.timestamp <= to_time]
 
     if cpanel_user:
         target = cpanel_user.strip()
@@ -490,49 +534,19 @@ def filter_records(
     return filtered
 
 
-def percentile(values: Sequence[float], pct: int) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    index = int(math.ceil((pct / 100.0) * len(ordered))) - 1
-    index = max(0, min(index, len(ordered) - 1))
-    return ordered[index]
-
-
 def format_seconds(value: float) -> str:
     return "%.3f sec" % value
 
 
 def summarize(records: Sequence[SlowQueryRecord]) -> Dict[str, object]:
     query_times = [record.query_time for record in records]
-    rows_examined = sum(record.rows_examined for record in records)
     return {
         "count": len(records),
-        "total_query_time": sum(query_times),
         "average_query_time": (sum(query_times) / len(query_times)) if query_times else 0.0,
-        "p95_query_time": percentile(query_times, 95),
         "max_query_time": max(query_times) if query_times else 0.0,
-        "rows_examined_total": rows_examined,
         "first_seen": min((record.timestamp for record in records), default=None),
         "last_seen": max((record.timestamp for record in records), default=None),
     }
-
-
-def build_fingerprint_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tuple[str, int, float, int]]:
-    stats = {}
-    for record in records:
-        fingerprint = normalize_sql(record.sql)
-        if fingerprint not in stats:
-            stats[fingerprint] = {"count": 0, "max": 0.0, "rows": 0}
-        stats[fingerprint]["count"] += 1
-        stats[fingerprint]["max"] = max(stats[fingerprint]["max"], record.query_time)
-        stats[fingerprint]["rows"] += record.rows_examined
-
-    sorted_stats = sorted(
-        stats.items(),
-        key=lambda item: (-item[1]["count"], -item[1]["max"], item[0]),
-    )
-    return [(fingerprint, data["count"], data["max"], data["rows"]) for fingerprint, data in sorted_stats[:top_n]]
 
 
 def build_owner_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tuple[str, int, float, float]]:
@@ -554,7 +568,7 @@ def render_summary(
     title: str,
     records: Sequence[SlowQueryRecord],
     log_file: str,
-    since_value: str,
+    time_filter_label: str,
     top_n: int,
     palette: Palette,
     include_owner_breakdown: bool,
@@ -565,7 +579,7 @@ def render_summary(
     lines.append(palette.color("# slow-query-review", palette.header))
     lines.append("%s %s" % (palette.color("Log file:", palette.label), log_file))
     lines.append("%s %s" % (palette.color("Scope:", palette.label), title))
-    lines.append("%s %s" % (palette.color("Time filter:", palette.label), since_value))
+    lines.append("%s %s" % (palette.color("Time filter:", palette.label), time_filter_label))
 
     if summary["first_seen"] and summary["last_seen"]:
         lines.append(
@@ -584,45 +598,56 @@ def render_summary(
         "Total slow queries:      %s"
         % palette.color(str(summary["count"]), palette.good if summary["count"] else palette.warn)
     )
-    lines.append("Total query time:        %s" % format_seconds(summary["total_query_time"]))
     lines.append("Average query time:      %s" % format_seconds(summary["average_query_time"]))
-    lines.append("P95 query time:          %s" % format_seconds(summary["p95_query_time"]))
     lines.append("Slowest query:           %s" % format_seconds(summary["max_query_time"]))
-    lines.append("Rows examined total:     %s" % "{:,}".format(int(summary["rows_examined_total"])))
 
     if include_owner_breakdown and records:
         lines.append("")
-        lines.append(palette.color("Top cPanel owners", palette.accent))
-        lines.append("-" * 17)
+        lines.append(palette.color("cPanel accounts with slow queries", palette.accent))
+        lines.append("-" * 33)
+        lines.append(
+            "%-20s %8s   %14s   %12s"
+            % ("ACCOUNT", "QUERIES", "TOTAL TIME", "SLOWEST")
+        )
         for owner, count, total, maximum in build_owner_stats(records, top_n):
-            lines.append("%-20s %5d queries   %10.3f sec total   max %7.3f sec" % (owner, count, total, maximum))
-
-    fingerprints = build_fingerprint_stats(records, top_n)
-    if fingerprints:
-        lines.append("")
-        lines.append(palette.color("Top query fingerprints", palette.accent))
-        lines.append("-" * 22)
-        for index, (fingerprint, count, maximum, rows) in enumerate(fingerprints, 1):
-            lines.append("%d. %4dx   max %7.3f sec   rows_examined %s" % (index, count, maximum, "{:,}".format(rows)))
-            lines.append("   %s" % truncate(fingerprint, 110))
+            lines.append(
+                "%-20s %8d   %14s   %12s"
+                % (owner, count, format_seconds(total), format_seconds(maximum))
+            )
 
     slowest = sorted(records, key=lambda record: record.query_time, reverse=True)[:top_n]
     if slowest:
         lines.append("")
-        lines.append(palette.color("Top slow queries", palette.accent))
-        lines.append("-" * 16)
+        section_title = "%s slowest queries for the selected scope/time filter" % len(slowest)
+        lines.append(palette.color(section_title, palette.accent))
+        lines.append("-" * len(section_title))
         for record in slowest:
+            owner_text = "%s%s" % (
+                palette.color("owner=", palette.label),
+                palette.color(record.attributed_owner, palette.accent),
+            )
+            executed_text = "%s%s" % (
+                palette.color("executed_as=", palette.label),
+                palette.color(record.db_user, palette.dim),
+            )
+            query_time_text = palette.color(format_seconds(record.query_time), palette.bad)
             lines.append(
-                "%s   owner=%s   executed_as=%s   %s"
+                "%s   %s   %s   %s"
                 % (
                     format_timestamp(record.timestamp),
-                    record.attributed_owner,
-                    record.db_user,
-                    format_seconds(record.query_time),
+                    owner_text,
+                    executed_text,
+                    query_time_text,
                 )
             )
             if record.database:
-                lines.append("  db=%s" % record.database)
+                lines.append(
+                    "  %s%s"
+                    % (
+                        palette.color("db=", palette.label),
+                        palette.color(record.database, palette.warn),
+                    )
+                )
             lines.append("  SQL: %s" % truncate(single_line(record.sql), 140))
 
     return "\n".join(lines)
@@ -642,10 +667,24 @@ def format_timestamp(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+def build_time_filter_label(
+    since_value: str,
+    from_time: Optional[datetime],
+    to_time: Optional[datetime],
+) -> str:
+    if from_time or to_time:
+        start_label = format_timestamp(from_time) if from_time else "(beginning)"
+        end_label = format_timestamp(to_time) if to_time else "(latest)"
+        if since_value.strip().lower() not in ("", "all", "none"):
+            return "%s -> %s, plus since %s" % (start_label, end_label, since_value)
+        return "%s -> %s" % (start_label, end_label)
+    return since_value
+
+
 def write_reports(
     grouped_records: Dict[str, List[SlowQueryRecord]],
     log_file: str,
-    since_value: str,
+    time_filter_label: str,
     top_n: int,
 ) -> List[str]:
     written_paths = []
@@ -670,7 +709,7 @@ def write_reports(
             "single user (%s)" % owner,
             records,
             log_file,
-            since_value,
+            time_filter_label,
             top_n,
             plain_palette,
             include_owner_breakdown=False,
@@ -707,9 +746,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         since_delta = parse_timeframe(args.since)
+        from_time = parse_interval_time(args.from_time)
+        to_time = parse_interval_time(args.to_time)
     except ValueError as exc:
         print(palette.color("Error: %s" % exc, palette.bad), file=sys.stderr)
         return 2
+
+    if from_time and to_time and from_time > to_time:
+        print(palette.color("Error: --from must be earlier than or equal to --to.", palette.bad), file=sys.stderr)
+        return 2
+
+    time_filter_label = build_time_filter_label(args.since, from_time, to_time)
 
     log_file = detect_log_file(args.log_file)
     cpanel_users = load_cpanel_users()
@@ -726,6 +773,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     filtered_records = filter_records(
         records,
         since_delta=since_delta,
+        from_time=from_time,
+        to_time=to_time,
         cpanel_user=args.user,
         include_system=args.include_system,
     )
@@ -734,7 +783,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         scope = "user %s" % args.user if args.user else "all users"
         print(
             palette.color(
-                "No slow query records matched %s with timeframe %s." % (scope, args.since),
+                "No slow query records matched %s with time filter %s." % (scope, time_filter_label),
                 palette.warn,
             )
         )
@@ -746,7 +795,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             title=title,
             records=filtered_records,
             log_file=log_file,
-            since_value=args.since,
+            time_filter_label=time_filter_label,
             top_n=args.top,
             palette=palette,
             include_owner_breakdown=False,
@@ -755,7 +804,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.write_user_reports:
             grouped = {args.user: list(filtered_records)}
             attach_report_dir(grouped, args.report_dir)
-            for item in write_reports(grouped, log_file, args.since, args.top):
+            for item in write_reports(grouped, log_file, time_filter_label, args.top):
                 print(palette.color("Report: %s" % item, palette.good))
         return 0
 
@@ -764,7 +813,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         title=title,
         records=filtered_records,
         log_file=log_file,
-        since_value=args.since,
+        time_filter_label=time_filter_label,
         top_n=args.top,
         palette=palette,
         include_owner_breakdown=True,
@@ -774,7 +823,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.write_user_reports:
         grouped = group_by_owner(filtered_records)
         attach_report_dir(grouped, args.report_dir)
-        written = write_reports(grouped, log_file, args.since, args.top)
+        written = write_reports(grouped, log_file, time_filter_label, args.top)
         if written:
             print("")
             print(palette.color("Report files", palette.accent))

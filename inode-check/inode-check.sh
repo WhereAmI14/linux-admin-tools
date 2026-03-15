@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+#RED=$'\033[31;1m'
+#CYAN=$'\033[36;1m'
+#YELLOW=$'\033[33;1m'
+BLUE=$'\033[34;1m'
+GREEN=$'\033[32;1m'
+DEF=$'\033[0m'
+BOLD=$'\033[1m'
+
+
 print_help() {
     cat <<'EOF'
 Usage: inode-check.sh [target_dir] [top_n]
@@ -37,7 +46,7 @@ prompt_for_target_dir() {
         return
     fi
 
-    printf 'Enter directory to inspect [%s]: ' "$PWD" >&2
+    printf 'Enter directory to inspect [%s]: ' "${BOLD}$PWD${DEF}" >&2
     IFS= read -r reply < "$prompt_stream" || true
 
     if [[ -n "$reply" ]]; then
@@ -154,24 +163,26 @@ fi
 
 target_dir="$(realpath "$target_dir")"
 
-printf 'Inode report for %s\n\n' "$target_dir"
+# From this point, the ouput is defined
+
+printf 'Inode report for %s\n\n' "${GREEN}$target_dir${DEF}"
 
 printf 'Total inodes under target: '
-du --inodes -s -x "$target_dir" \
+du --inodes -s -x "${BLUE}$target_dir${DEF}" \
     | awk -F '\t' '
         $1 ~ /^[0-9]+$/ { print $1; next }
         $2 ~ /^[0-9]+$/ { print $2; next }
     '
 
 printf 'Recursive inode totals for immediate subdirectories\n'
-printf '%10s  %s\n' 'INODES' 'PATH'
+printf '%10s  %s\n' "${BOLD}INODES${DEF}" "${BOLD}PATH${DEF}"
 find "$target_dir" -mindepth 1 -maxdepth 1 -type d -print0 \
     | xargs -0r du --inodes -s -x \
     | sort -rn \
     | print_du_table
 
 printf '\nTop %s folders by direct entries\n' "$top_n"
-printf '%10s  %s\n' 'ENTRIES' 'PATH'
+printf '%10s  %s\n' "${BOLD}ENTRIES${DEF}" "${BOLD}PATH${DEF}"
 find "$target_dir" -mindepth 1 -xdev -printf '%h\0' \
     | awk -v RS='\0' '
         { counts[$0]++ }
