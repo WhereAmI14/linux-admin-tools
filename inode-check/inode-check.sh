@@ -168,10 +168,10 @@ target_dir="$(realpath "$target_dir")"
 printf 'Inode report for %s\n\n' "${GREEN}$target_dir${DEF}"
 
 printf 'Total inodes under target: '
-du --inodes -s -x "${BLUE}$target_dir${DEF}" \
-    | awk -F '\t' '
-        $1 ~ /^[0-9]+$/ { print $1; next }
-        $2 ~ /^[0-9]+$/ { print $2; next }
+du --inodes -s -x "$target_dir" \
+    | awk -F '\t' -v blue='\033[34;1m' -v reset='\033[0m' '
+        $1 ~ /^[0-9]+$/ { print blue $1 reset; next }
+        $2 ~ /^[0-9]+$/ { print blue $2 reset; next }
     '
 
 printf 'Recursive inode totals for immediate subdirectories\n'

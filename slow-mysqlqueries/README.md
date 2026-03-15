@@ -87,7 +87,7 @@ SLOW_QUERY_REVIEW_REPO=linux-admin-tools
 
 The repository includes GitHub Actions workflows at the repo root:
 
-- `slow-mysqlqueries-dev-ci.yml` runs on pushes and pull requests targeting `dev`, and tests the tool on Python 3.8 through 3.12.
+- `slow-mysqlqueries-dev-ci.yml` runs Ruff first, then tests the tool on Python 3.8 through 3.12.
 - `slow-mysqlqueries-sonar.yml` runs a SonarQube Cloud scan for this tool when a `SONAR_TOKEN` repository secret is present.
 
 To enable SonarQube Cloud analysis, add a repository secret named `SONAR_TOKEN`.
