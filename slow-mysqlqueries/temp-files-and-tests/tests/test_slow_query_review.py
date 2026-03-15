@@ -100,6 +100,18 @@ class SlowQueryReviewTests(unittest.TestCase):
         self.assertEqual(resolved.user, "easternm")
         self.assertFalse(resolved.all_users)
 
+    def test_prompt_for_time_filter_blank_input_uses_all(self):
+        args = self.tool.parse_args(["--all-users", "--log-file", str(FIXTURE_PATH), "--no-color"])
+        output = io.StringIO()
+        resolved = self.tool.prompt_for_time_filter(args, input_stream=io.StringIO("\n"), output_stream=output)
+        self.assertEqual(resolved.since, "all")
+
+    def test_prompt_for_time_filter_accepts_relative_value(self):
+        args = self.tool.parse_args(["--all-users", "--log-file", str(FIXTURE_PATH), "--no-color"])
+        output = io.StringIO()
+        resolved = self.tool.prompt_for_time_filter(args, input_stream=io.StringIO("7d\n"), output_stream=output)
+        self.assertEqual(resolved.since, "7d")
+
     def test_cli_all_users_output_contains_expected_sections(self):
         result = subprocess.run(
             [
@@ -121,7 +133,7 @@ class SlowQueryReviewTests(unittest.TestCase):
         self.assertIn("ACCOUNT", result.stdout)
         self.assertIn("easternm", result.stdout)
         self.assertIn("gdbltdne", result.stdout)
-        self.assertIn("slowest queries for the selected scope/time filter", result.stdout)
+        self.assertIn("The 2 slowest queries for all users during all time", result.stdout)
         self.assertNotIn("(system/root)            ", result.stdout)
         self.assertNotIn("Top query fingerprints", result.stdout)
         self.assertNotIn("Total query time:", result.stdout)
@@ -177,7 +189,7 @@ class SlowQueryReviewTests(unittest.TestCase):
             self.assertEqual(len(generated), 1)
             report_text = generated[0].read_text(encoding="utf-8")
             self.assertIn("single user (easternm)", report_text)
-            self.assertIn("slowest queries for the selected scope/time filter", report_text)
+            self.assertIn("The 1 slowest queries for user easternm during all time", report_text)
             self.assertNotIn("Top query fingerprints", report_text)
 
 
