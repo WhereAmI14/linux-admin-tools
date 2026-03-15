@@ -16,7 +16,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, TextIO, Tuple
 
 
 DEFAULT_LOG_PATH = "/var/lib/mysql/mysql-slow.log"
@@ -85,7 +85,7 @@ class Palette:
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Review MySQL slow queries and summarize them by cPanel owner.")
-    target = parser.add_mutually_exclusive_group(required=True)
+    target = parser.add_mutually_exclusive_group()
     target.add_argument("--user", help="Review slow queries for a single cPanel user.")
     target.add_argument(
         "--all-users",
@@ -130,6 +130,51 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Disable ANSI colors.",
     )
     return parser.parse_args(argv)
+
+
+def open_prompt_stream() -> Tuple[TextIO, bool]:
+    if getattr(sys.stdin, "isatty", lambda: False)():
+        return sys.stdin, False
+    try:
+        return open("/dev/tty", "r", encoding="utf-8"), True
+    except OSError:
+        return sys.stdin, False
+
+
+def prompt_for_target(
+    args: argparse.Namespace,
+    input_stream: Optional[TextIO] = None,
+    output_stream: Optional[TextIO] = None,
+) -> argparse.Namespace:
+    if args.user or args.all_users:
+        return args
+
+    stream = input_stream
+    should_close = False
+    if stream is None:
+        stream, should_close = open_prompt_stream()
+
+    out = output_stream or sys.stderr
+
+    try:
+        out.write("Enter a cPanel user to review, or press Enter to scan all users: ")
+        out.flush()
+        user = stream.readline()
+        if not user:
+            args.all_users = True
+            out.write("\nNo interactive input available. Defaulting to all users.\n")
+            out.flush()
+            return args
+
+        user = user.strip()
+        if user:
+            args.user = user
+        else:
+            args.all_users = True
+        return args
+    finally:
+        if should_close:
+            stream.close()
 
 
 def should_use_color(disabled: bool) -> bool:
@@ -657,6 +702,7 @@ def attach_report_dir(grouped_records: Dict[str, List[SlowQueryRecord]], report_
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
+    args = prompt_for_target(args)
     palette = Palette(should_use_color(args.no_color))
 
     try:

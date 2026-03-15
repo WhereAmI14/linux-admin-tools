@@ -24,6 +24,12 @@ Run directly from GitHub with the shell bootstrap:
 curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/dev/slow-mysqlqueries/slow-queries-checker.sh | bash -s -- --all-users
 ```
 
+If you omit `--all-users` and `--user`, the tool prompts for a cPanel username. Press Enter with no value to scan all users:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/dev/slow-mysqlqueries/slow-queries-checker.sh | bash
+```
+
 Review one cPanel user:
 
 ```bash

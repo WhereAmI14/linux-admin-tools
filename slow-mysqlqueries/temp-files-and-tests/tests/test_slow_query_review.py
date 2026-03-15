@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,24 @@ class SlowQueryReviewTests(unittest.TestCase):
         )
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered[0].attributed_owner, "easternm")
+
+    def test_prompt_for_target_blank_input_scans_all_users(self):
+        args = self.tool.parse_args(["--log-file", str(FIXTURE_PATH), "--no-color"])
+        output = io.StringIO()
+        resolved = self.tool.prompt_for_target(args, input_stream=io.StringIO("\n"), output_stream=output)
+        self.assertTrue(resolved.all_users)
+        self.assertIsNone(resolved.user)
+
+    def test_prompt_for_target_can_accept_single_user(self):
+        args = self.tool.parse_args(["--log-file", str(FIXTURE_PATH), "--no-color"])
+        output = io.StringIO()
+        resolved = self.tool.prompt_for_target(
+            args,
+            input_stream=io.StringIO("easternm\n"),
+            output_stream=output,
+        )
+        self.assertEqual(resolved.user, "easternm")
+        self.assertFalse(resolved.all_users)
 
     def test_cli_all_users_output_contains_expected_sections(self):
         result = subprocess.run(
