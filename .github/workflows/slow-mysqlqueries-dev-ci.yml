@@ -39,16 +39,16 @@ jobs:
         run: python --version
 
       - name: Compile the tool
-        run: python -m py_compile slow-mysqlqueries/new-version1/slow_query_review.py
+        run: python -m py_compile slow-mysqlqueries/slow_query_review.py
 
       - name: Run unit tests
-        run: python -m unittest discover -s slow-mysqlqueries/new-version1/tests -v
+        run: python -m unittest discover -s slow-mysqlqueries/temp-files-and-tests/tests -v
 
       - name: Run CLI smoke test
         run: >
-          python slow-mysqlqueries/new-version1/slow_query_review.py
+          python slow-mysqlqueries/slow_query_review.py
           --all-users
-          --log-file slow-mysqlqueries/new-version1/tests/fixtures/sample_slow.log
+          --log-file slow-mysqlqueries/temp-files-and-tests/tests/fixtures/sample_slow.log
           --top 3
           --no-color
 
