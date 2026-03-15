@@ -21,7 +21,7 @@ python3 slow_query_review.py --all-users
 Run directly from GitHub with the shell bootstrap:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/dev/slow-mysqlqueries/new-version1/bootstrap.sh | bash -s -- --all-users
+curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/dev/slow-mysqlqueries/slow-queries-checker.sh | bash -s -- --all-users
 ```
 
 Review one cPanel user:
