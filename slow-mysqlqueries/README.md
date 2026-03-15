@@ -18,6 +18,12 @@ Review all users:
 python3 slow_query_review.py --all-users
 ```
 
+Run directly from GitHub with the shell bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/dev/slow-mysqlqueries/new-version1/bootstrap.sh | bash -s -- --all-users
+```
+
 Review one cPanel user:
 
 ```bash
@@ -54,6 +60,14 @@ Disable colors:
 
 ```bash
 python3 slow_query_review.py --all-users --no-color
+```
+
+The bootstrap script forwards arguments to the Python tool and honors these optional environment overrides:
+
+```bash
+SLOW_QUERY_REVIEW_REF=main
+SLOW_QUERY_REVIEW_OWNER=WhereAmI14
+SLOW_QUERY_REVIEW_REPO=linux-admin-tools
 ```
 
 ## CI
