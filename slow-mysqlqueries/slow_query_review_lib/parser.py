@@ -144,6 +144,7 @@ def parse_slow_log(path: str, cpanel_users: Sequence[str]) -> List[SlowQueryReco
     records: List[SlowQueryRecord] = []
     current: Optional[Dict[str, object]] = None
     sql_lines: List[str] = []
+    raw_lines: List[str] = []
 
     try:
         handle = open(path, "r", encoding="utf-8", errors="replace")
@@ -155,17 +156,21 @@ def parse_slow_log(path: str, cpanel_users: Sequence[str]) -> List[SlowQueryReco
             line = raw_line.rstrip("\n")
 
             if line.startswith("# Time: "):
+                if current is not None:
+                    current["raw_entry"] = "\n".join(raw_lines).strip()
                 record = finalize_record(current, sql_lines, cpanel_users)
                 if record is not None:
                     records.append(record)
                 current = {"timestamp_raw": line[len("# Time: ") :].strip()}
                 sql_lines = []
+                raw_lines = [line]
                 continue
 
             if current is None:
                 continue
 
             if line.startswith("# User@Host: "):
+                raw_lines.append(line)
                 match = USER_HOST_RE.match(line)
                 if match:
                     current["db_user"] = match.group(1).strip()
@@ -175,6 +180,7 @@ def parse_slow_log(path: str, cpanel_users: Sequence[str]) -> List[SlowQueryReco
                 continue
 
             if line.startswith("# Query_time: "):
+                raw_lines.append(line)
                 match = QUERY_STATS_RE.match(line)
                 if match:
                     current["query_time"] = float(match.group(1))
@@ -184,13 +190,22 @@ def parse_slow_log(path: str, cpanel_users: Sequence[str]) -> List[SlowQueryReco
                 continue
 
             if line.startswith("use "):
+                raw_lines.append(line)
                 current["database"] = line[4:].rstrip(";").strip()
                 continue
 
-            if line.startswith("SET timestamp=") or line.startswith(SERVER_NOISE_PREFIXES):
+            if line.startswith("SET timestamp="):
+                raw_lines.append(line)
                 continue
 
+            if line.startswith(SERVER_NOISE_PREFIXES):
+                continue
+
+            raw_lines.append(line)
             sql_lines.append(line)
+
+    if current is not None:
+        current["raw_entry"] = "\n".join(raw_lines).strip()
 
     record = finalize_record(current, sql_lines, cpanel_users)
     if record is not None:
@@ -233,6 +248,7 @@ def finalize_record(
     return SlowQueryRecord(
         timestamp=parse_log_timestamp(str(current["timestamp_raw"])),
         timestamp_raw=str(current["timestamp_raw"]),
+        raw_entry=str(current.get("raw_entry") or ""),
         db_user=str(current["db_user"]),
         login_user=str(current["login_user"]),
         host=str(current["host"]),

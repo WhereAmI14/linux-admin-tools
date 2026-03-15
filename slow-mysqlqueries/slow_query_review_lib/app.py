@@ -5,7 +5,14 @@ from typing import Optional, Sequence
 
 from .cli import parse_args, prompt_for_target, prompt_for_time_filter, should_use_color
 from .parser import detect_log_file, filter_records, load_cpanel_users, parse_slow_log
-from .reporting import Palette, attach_report_dir, group_by_owner, render_summary, write_reports
+from .reporting import (
+    Palette,
+    attach_report_dir,
+    group_by_owner,
+    render_summary,
+    write_raw_slow_query_report,
+    write_reports,
+)
 from .time_utils import build_time_filter_label, build_time_filter_phrase, parse_interval_time, parse_timeframe
 
 
@@ -70,11 +77,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 include_owner_breakdown=False,
             )
         )
+        try:
+            raw_report_path = write_raw_slow_query_report(args.user, filtered_records, args.report_dir)
+            print(palette.color("Raw slow-query report: %s" % raw_report_path, palette.good))
+        except OSError as exc:
+            print(palette.color("Skipped raw slow-query report: %s" % exc, palette.warn))
         if args.write_user_reports:
             grouped = {args.user: list(filtered_records)}
             attach_report_dir(grouped, args.report_dir)
             for item in write_reports(grouped, log_file, time_filter_label, time_filter_phrase, args.top):
-                print(palette.color("Report: %s" % item, palette.good))
+                print(palette.color("Analytical report: %s" % item, palette.good))
         return 0
 
     print(

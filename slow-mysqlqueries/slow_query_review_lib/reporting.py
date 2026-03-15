@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import pwd
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -54,6 +55,21 @@ def build_owner_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tu
     return rows[:top_n]
 
 
+def build_database_stats(records: Sequence[SlowQueryRecord], top_n: int) -> List[Tuple[str, int, float]]:
+    buckets: Dict[str, List[SlowQueryRecord]] = defaultdict(list)
+    for record in records:
+        if record.database:
+            buckets[record.database].append(record)
+
+    rows = []
+    for database, database_records in buckets.items():
+        maximum = max(record.query_time for record in database_records)
+        rows.append((database, len(database_records), maximum))
+
+    rows.sort(key=lambda item: (-item[1], -item[2], item[0]))
+    return rows[:top_n]
+
+
 def render_summary(
     title: str,
     records: Sequence[SlowQueryRecord],
@@ -99,6 +115,15 @@ def render_summary(
         lines.append("%-20s %8s   %14s   %12s" % ("ACCOUNT", "QUERIES", "TOTAL TIME", "SLOWEST"))
         for owner, count, total, maximum in build_owner_stats(records, top_n):
             lines.append("%-20s %8d   %14s   %12s" % (owner, count, format_seconds(total), format_seconds(maximum)))
+
+    database_rows = build_database_stats(records, top_n)
+    if database_rows:
+        lines.append("")
+        lines.append(palette.color("Databases with the most slow queries", palette.accent))
+        lines.append("-" * 36)
+        lines.append("%-30s %8s   %12s" % ("DATABASE", "QUERIES", "SLOWEST"))
+        for database, count, maximum in database_rows:
+            lines.append("%-30s %8d   %12s" % (truncate(database, 30), count, format_seconds(maximum)))
 
     slowest = sorted(records, key=lambda record: record.query_time, reverse=True)[:top_n]
     if slowest:
@@ -187,6 +212,42 @@ def write_reports(
         except OSError as exc:
             written_paths.append("Skipped %s report: unable to write %s (%s)" % (owner, path, exc))
     return written_paths
+
+
+def render_raw_report(records: Sequence[SlowQueryRecord]) -> str:
+    entries = [record.raw_entry.strip() for record in records if record.raw_entry.strip()]
+    return "\n\n".join(entries) + ("\n" if entries else "")
+
+
+def maybe_chown_to_user(path: str, owner: str) -> None:
+    try:
+        user_info = pwd.getpwnam(owner)
+    except KeyError:
+        return
+
+    try:
+        os.chown(path, user_info.pw_uid, user_info.pw_gid)
+    except OSError:
+        return
+
+
+def write_raw_slow_query_report(
+    owner: str,
+    records: Sequence[SlowQueryRecord],
+    report_dir: Optional[str] = None,
+) -> str:
+    output_dir = report_dir or os.path.join("/home", owner)
+    os.makedirs(output_dir, exist_ok=True)
+
+    filename = "slow-queries-%s.txt" % datetime.now().strftime("%d-%b-%Y")
+    path = os.path.join(output_dir, filename)
+    report_text = render_raw_report(records)
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(report_text)
+
+    maybe_chown_to_user(path, owner)
+    return path
 
 
 def group_by_owner(records: Sequence[SlowQueryRecord]) -> Dict[str, List[SlowQueryRecord]]:

@@ -130,9 +130,12 @@ class SlowQueryReviewTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Summary", result.stdout)
         self.assertIn("cPanel accounts with slow queries", result.stdout)
+        self.assertIn("Databases with the most slow queries", result.stdout)
+        self.assertIn("DATABASE", result.stdout)
         self.assertIn("ACCOUNT", result.stdout)
         self.assertIn("easternm", result.stdout)
         self.assertIn("gdbltdne", result.stdout)
+        self.assertIn("easternm_easternmeat", result.stdout)
         self.assertIn("The 2 slowest queries for all users during all time", result.stdout)
         self.assertNotIn("(system/root)            ", result.stdout)
         self.assertNotIn("Top query fingerprints", result.stdout)
@@ -185,12 +188,47 @@ class SlowQueryReviewTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, msg=result.stderr)
+            raw_generated = sorted(Path(tmp_dir).glob("slow-queries-*.txt"))
+            self.assertEqual(len(raw_generated), 1)
+            raw_report_text = raw_generated[0].read_text(encoding="utf-8")
+            self.assertIn("# Time: 2025-08-03T02:06:53.286964Z", raw_report_text)
+            self.assertIn("use easternm_easternmeat;", raw_report_text)
             generated = sorted(Path(tmp_dir).glob("slow-query-report-*.txt"))
             self.assertEqual(len(generated), 1)
             report_text = generated[0].read_text(encoding="utf-8")
             self.assertIn("single user (easternm)", report_text)
             self.assertIn("The 1 slowest queries for user easternm during all time", report_text)
             self.assertNotIn("Top query fingerprints", report_text)
+
+    def test_single_user_run_writes_raw_report_for_selected_interval(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "--user",
+                    "gdbltdne",
+                    "--from",
+                    "2025-08-04 00:00",
+                    "--to",
+                    "2025-08-04 23:59:59",
+                    "--report-dir",
+                    tmp_dir,
+                    "--log-file",
+                    str(FIXTURE_PATH),
+                    "--no-color",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            raw_generated = sorted(Path(tmp_dir).glob("slow-queries-*.txt"))
+            self.assertEqual(len(raw_generated), 1)
+            raw_report_text = raw_generated[0].read_text(encoding="utf-8")
+            self.assertIn("gdbltdne_stagingnode49", raw_report_text)
+            self.assertNotIn("easternm_easternmeat", raw_report_text)
 
 
 if __name__ == "__main__":

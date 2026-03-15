@@ -25,6 +25,7 @@ SERVER_NOISE_PREFIXES = (
 class SlowQueryRecord:
     timestamp: datetime
     timestamp_raw: str
+    raw_entry: str
     db_user: str
     login_user: str
     host: str

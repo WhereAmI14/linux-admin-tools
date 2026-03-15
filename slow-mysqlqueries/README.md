@@ -8,7 +8,7 @@ Analytical replacement for the two existing shell scripts used to inspect MySQL 
 - Support both modern cPanel/MySQL naming and older 8-character owner prefixes.
 - Produce readable terminal output with colors.
 - Keep the implementation compatible with Python 3.8 through 3.12.
-- Optionally write analytical reports into `/home/<cpuser>/`.
+- Write a raw per-user slow-query extract for single-user runs, and optionally write analytical reports into `/home/<cpuser>/`.
 
 ## Usage
 
@@ -62,6 +62,14 @@ Write analytical reports per matched user:
 python3 slow_query_review.py --all-users --write-user-reports
 python3 slow_query_review.py --user easternm --write-user-reports
 ```
+
+Single-user runs also write a raw extracted slow-log report filtered to the selected time period:
+
+```bash
+python3 slow_query_review.py --user easternm --since 7d
+```
+
+This creates `/home/easternm/slow-queries-<date>.txt` by default, or writes it under `--report-dir` if one is provided.
 
 Write reports somewhere else:
 
