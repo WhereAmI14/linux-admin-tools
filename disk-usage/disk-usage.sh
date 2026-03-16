@@ -9,6 +9,8 @@ set -euo pipefail
 
 readonly DEFAULT_THRESHOLD_MB=300
 readonly DEFAULT_TOP_DIRS=15
+readonly INVOCATION_DIR="$(pwd -P)"
+readonly THRESHOLD_LABEL="${DEFAULT_THRESHOLD_MB} MB"
 
 USE_COLOR=0
 if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
@@ -37,7 +39,7 @@ read_tty() {
     local prompt="$1"
     local value=""
 
-    if ! exec 3</dev/tty 2>/dev/null; then
+    if ! { exec 3</dev/tty; } 2>/dev/null; then
         return 1
     fi
 
@@ -48,6 +50,38 @@ read_tty() {
 
     exec 3<&-
     printf '%s' "$value"
+}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [PATH]
+
+Scan disk usage under PATH.
+
+If PATH is omitted, the script prompts for one. Submitting an empty prompt
+defaults to the directory where the script was executed.
+
+Environment:
+  DISK_USAGE_TOP_DIRS   Number of largest directories to show (default: ${DEFAULT_TOP_DIRS})
+EOF
+}
+
+add_warning() {
+    WARNINGS+=("$1")
+}
+
+print_warnings() {
+    local warning
+
+    if [[ "${#WARNINGS[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    print_title "$YELLOW" "Warnings"
+    for warning in "${WARNINGS[@]}"; do
+        printf '%s\n' "$warning"
+    done
+    printf '\n'
 }
 # Convert bytes to human-readable format
 human_size() {
@@ -136,6 +170,7 @@ print_table() {
 
 target_dir="${1:-}"
 top_dirs="${DISK_USAGE_TOP_DIRS:-$DEFAULT_TOP_DIRS}"
+WARNINGS=()
 
 if [[ "${target_dir:-}" == "-h" || "${target_dir:-}" == "--help" ]]; then
     usage
@@ -148,10 +183,10 @@ if ! [[ "$top_dirs" =~ ^[0-9]+$ ]] || [[ "$top_dirs" -lt 1 ]]; then
 fi
 
 if [[ -z "$target_dir" ]]; then
-    if prompt_value="$(read_tty "Path to inspect [default: $(pwd)]: ")"; then
-        target_dir="${prompt_value:-$(pwd)}"
+    if prompt_value="$(read_tty "Path to scan [default: ${INVOCATION_DIR}]: ")"; then
+        target_dir="${prompt_value:-$INVOCATION_DIR}"
     else
-        target_dir="$(pwd)"
+        target_dir="$INVOCATION_DIR"
     fi
 fi
 
@@ -162,26 +197,65 @@ fi
 
 target_dir="$(realpath "$target_dir")"
 
-directories_report="$(mktemp)"
-large_files_report="$(mktemp)"
-archives_report="$(mktemp)"
-logs_report="$(mktemp)"
-other_report="$(mktemp)"
+if [[ ! -r "$target_dir" || ! -x "$target_dir" ]]; then
+    printf 'Error: %s is not accessible by the current user.\n' "$target_dir" >&2
+    exit 1
+fi
+
+report_dir="$(mktemp -d)"
+directories_report="$report_dir/directories.tsv"
+large_files_report="$report_dir/large-files.tsv"
+archives_report="$report_dir/archives.tsv"
+logs_report="$report_dir/logs.tsv"
+other_report="$report_dir/other.tsv"
+du_total_stderr="$report_dir/du-total.stderr"
+du_tree_stderr="$report_dir/du-tree.stderr"
+find_stderr="$report_dir/find.stderr"
+du_total_report="$report_dir/du-total.tsv"
 
 cleanup() {
-    rm -f "$directories_report" "$large_files_report" "$archives_report" "$logs_report" "$other_report"
+    rm -rf "$report_dir"
 }
 trap cleanup EXIT
 
-target_total_bytes="$(du -sx -B1 "$target_dir" 2>/dev/null | awk '{print $1}')"
- 
-du -x -B1 "$target_dir" 2>/dev/null \
+: > "$directories_report"
+: > "$large_files_report"
+: > "$archives_report"
+: > "$logs_report"
+: > "$other_report"
+: > "$du_total_report"
+
+du_total_status=0
+if du -sx -B1 "$target_dir" > "$du_total_report" 2> "$du_total_stderr"; then
+    :
+else
+    du_total_status=$?
+fi
+target_total_bytes="$(awk 'NR == 1 { print $1 }' "$du_total_report")"
+
+du_tree_status=0
+if du -x -B1 "$target_dir" 2> "$du_tree_stderr" \
     | sort -rn \
     | awk -v target="$target_dir" '$2 != target' \
-    | awk -v limit="$top_dirs" 'NR <= limit' > "$directories_report"
+    | awk -v limit="$top_dirs" 'NR <= limit' > "$directories_report"; then
+    :
+else
+    du_tree_status=$?
+fi
 
-find "$target_dir" -xdev -type f -size +"${DEFAULT_THRESHOLD_MB}"M -printf '%s\t%p\n' 2>/dev/null \
-    | sort -rn > "$large_files_report"
+find_status=0
+if find "$target_dir" -xdev -type f -size +"${DEFAULT_THRESHOLD_MB}"M -printf '%s\t%p\n' 2> "$find_stderr" \
+    | sort -rn > "$large_files_report"; then
+    :
+else
+    find_status=$?
+fi
+
+if [[ -z "${target_total_bytes:-}" ]]; then
+    printf 'Error: unable to determine disk usage for %s.\n' "$target_dir" >&2
+    exit 1
+fi
+
 # Read the large files report and classify each file into archives, logs, or others
 while IFS=$'\t' read -r size path; do
     [[ -n "${size:-}" && -n "${path:-}" ]] || continue
@@ -199,13 +273,23 @@ while IFS=$'\t' read -r size path; do
     esac
 done < "$large_files_report"
 
+if [[ "$du_total_status" -ne 0 || "$du_tree_status" -ne 0 || -s "$du_total_stderr" || -s "$du_tree_stderr" ]]; then
+    add_warning "Directory usage skipped some paths due to permission or filesystem errors."
+fi
+
+if [[ "$find_status" -ne 0 || -s "$find_stderr" ]]; then
+    add_warning "Large file discovery skipped some paths due to permission or filesystem errors."
+fi
+
 
 # Disk Usage Review
 print_title "$BLUE" "Disk Usage Review"
 print_kv "Target" "$target_dir"
-print_kv "Threshold" "> ${DEFAULT_THRESHOLD_MB} MB"
+print_kv "Threshold" "> ${THRESHOLD_LABEL}"
 print_kv "Total size" "$(human_size "$target_total_bytes")"
 printf '\n'
+print_warnings
+
 
 # Output sections
 print_table \
@@ -217,7 +301,7 @@ print_table \
     "No subdirectories found."
 
 print_table \
-    "Compressed Archive Files Over 300 MB" \
+    "Compressed Archive Files Over ${THRESHOLD_LABEL}" \
     "$MAGENTA" \
     "$archives_report" \
     "SIZE" \
@@ -225,7 +309,7 @@ print_table \
     "No large archive files found."
 
 print_table \
-    "Log Files Over 300 MB" \
+    "Log Files Over ${THRESHOLD_LABEL}" \
     "$YELLOW" \
     "$logs_report" \
     "SIZE" \
@@ -233,7 +317,7 @@ print_table \
     "No large log files found."
 
 print_table \
-    "Other Files Over 300 MB" \
+    "Other Files Over ${THRESHOLD_LABEL}" \
     "$GREEN" \
     "$other_report" \
     "SIZE" \
