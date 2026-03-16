@@ -14,7 +14,7 @@ From GitHub:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/disk-usage/disk-usage.sh | bash
-curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/disk-usage/disk-usage.sh | bash -s -- /home/ivanr
+curl -fsSL https://raw.githubusercontent.com/WhereAmI14/linux-admin-tools/main/disk-usage/disk-usage.sh | bash -s -- /home/user
 ```
 
 ## Notes
