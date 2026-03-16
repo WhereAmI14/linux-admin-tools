@@ -229,11 +229,9 @@ target_total_bytes="$(awk -v target="$target_dir" '$2 == target { print $1; exit
 
 sort -rn "$du_tree_report" \
     | awk -v target="$target_dir" -v limit="$top_dirs" '
-        $2 != target {
+        $2 != target && n < limit {
             print
-            if (++n == limit) {
-                exit
-            }
+            n++
         }
     ' > "$directories_report"
 

@@ -4,6 +4,7 @@ Small admin scripts for Linux and cPanel servers.
 
 ## Tools
 
+- `disk-usage/`: disk usage review for a target directory
 - `inode-check/`: inode usage report for a target directory
 - `slow-mysqlqueries/`: MySQL slow-query review tool for cPanel accounts
 
@@ -18,6 +19,12 @@ Inode check:
 
 ```bash
 bash inode-check/inode-check.sh
+```
+
+Disk usage:
+
+```bash
+bash disk-usage/disk-usage.sh
 ```
 
 Slow MySQL queries:
