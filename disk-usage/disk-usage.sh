@@ -121,27 +121,6 @@ print_kv() {
     printf '%b%-18s%b %s\n' "$BOLD" "$label" "$RESET" "$value"
 }
 
-classify_large_file() {
-    local original_path="$1"
-    local path="${original_path,,}"
-
-    case "$path" in
-        *.log|*.log.[0-9]*|*.out|*.err|*/log/*|*/logs/*|*/*_log|*-log)
-            printf 'log'
-            return
-            ;;
-    esac
-
-    case "$path" in
-        *.zip|*.tar|*.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tbz|*.gz|*.bz2|*.xz|*.txz|*.7z|*.rar|*.zst|*.tar.zst|*.lz|*.lz4|*.zipx|*.cab)
-            printf 'archive'
-            return
-            ;;
-    esac
-
-    printf 'other'
-}
-
 print_table() {
     local title="$1"
     local color="$2"
@@ -160,10 +139,26 @@ print_table() {
     printf '%b%-14s %s%b\n' "$BOLD" "$size_header" "$path_header" "$RESET"
     printf '%b%-14s %s%b\n' "$BOLD" "--------------" "----------------------------------------" "$RESET"
 
-    while IFS=$'\t' read -r size path; do
-        [[ -n "${size:-}" && -n "${path:-}" ]] || continue
-        printf '%b%-14s%b %s\n' "$color" "$(human_size "$size")" "$RESET" "$path"
-    done < "$input_file"
+    awk -F'\t' -v color="$color" -v reset="$RESET" '
+        function human(v, units, n, u) {
+            n = split("B KB MB GB TB PB", units, " ")
+            u = 1
+            while (v >= 1024 && u < n) {
+                v /= 1024
+                u++
+            }
+
+            if (v >= 100 || u == 1) {
+                return sprintf("%.0f %s", v, units[u])
+            }
+
+            return sprintf("%.1f %s", v, units[u])
+        }
+
+        NF >= 2 && $1 != "" && $2 != "" {
+            printf "%s%-14s%s %s\n", color, human($1), reset, $2
+        }
+    ' "$input_file"
 
     printf '\n'
 }
@@ -208,10 +203,9 @@ large_files_report="$report_dir/large-files.tsv"
 archives_report="$report_dir/archives.tsv"
 logs_report="$report_dir/logs.tsv"
 other_report="$report_dir/other.tsv"
-du_total_stderr="$report_dir/du-total.stderr"
 du_tree_stderr="$report_dir/du-tree.stderr"
 find_stderr="$report_dir/find.stderr"
-du_total_report="$report_dir/du-total.tsv"
+du_tree_report="$report_dir/du-tree.tsv"
 
 cleanup() {
     rm -rf "$report_dir"
@@ -223,25 +217,25 @@ trap cleanup EXIT
 : > "$archives_report"
 : > "$logs_report"
 : > "$other_report"
-: > "$du_total_report"
-
-du_total_status=0
-if du -sx -B1 "$target_dir" > "$du_total_report" 2> "$du_total_stderr"; then
-    :
-else
-    du_total_status=$?
-fi
-target_total_bytes="$(awk 'NR == 1 { print $1 }' "$du_total_report")"
+: > "$du_tree_report"
 
 du_tree_status=0
-if du -x -B1 "$target_dir" 2> "$du_tree_stderr" \
-    | sort -rn \
-    | awk -v target="$target_dir" '$2 != target' \
-    | awk -v limit="$top_dirs" 'NR <= limit' > "$directories_report"; then
+if du -x -B1 "$target_dir" > "$du_tree_report" 2> "$du_tree_stderr"; then
     :
 else
     du_tree_status=$?
 fi
+target_total_bytes="$(awk -v target="$target_dir" '$2 == target { print $1; exit }' "$du_tree_report")"
+
+sort -rn "$du_tree_report" \
+    | awk -v target="$target_dir" -v limit="$top_dirs" '
+        $2 != target {
+            print
+            if (++n == limit) {
+                exit
+            }
+        }
+    ' > "$directories_report"
 
 find_status=0
 if find "$target_dir" -xdev -type f -size +"${DEFAULT_THRESHOLD_MB}"M -printf '%s\t%p\n' 2> "$find_stderr" \
@@ -256,24 +250,26 @@ if [[ -z "${target_total_bytes:-}" ]]; then
     exit 1
 fi
 
-# Read the large files report and classify each file into archives, logs, or others
-while IFS=$'\t' read -r size path; do
-    [[ -n "${size:-}" && -n "${path:-}" ]] || continue
+awk -F'\t' -v archives_out="$archives_report" -v logs_out="$logs_report" -v other_out="$other_report" '
+    NF >= 2 && $1 != "" && $2 != "" {
+        path = tolower($2)
 
-    case "$(classify_large_file "$path")" in
-        archive)
-            printf '%s\t%s\n' "$size" "$path" >> "$archives_report"
-            ;;
-        log)
-            printf '%s\t%s\n' "$size" "$path" >> "$logs_report"
-            ;;
-        *)
-            printf '%s\t%s\n' "$size" "$path" >> "$other_report"
-            ;;
-    esac
-done < "$large_files_report"
+        if (path ~ /\.(log|out|err)$/ ||
+            path ~ /\.log\.[0-9]+$/ ||
+            path ~ /\/log\// ||
+            path ~ /\/logs\// ||
+            path ~ /\/[^/]*_log$/ ||
+            path ~ /-log$/) {
+            print > logs_out
+        } else if (path ~ /\.(zip|tar|tar\.gz|tgz|tar\.bz2|tbz2|tbz|gz|bz2|xz|txz|7z|rar|zst|tar\.zst|lz|lz4|zipx|cab)$/) {
+            print > archives_out
+        } else {
+            print > other_out
+        }
+    }
+' "$large_files_report"
 
-if [[ "$du_total_status" -ne 0 || "$du_tree_status" -ne 0 || -s "$du_total_stderr" || -s "$du_tree_stderr" ]]; then
+if [[ "$du_tree_status" -ne 0 || -s "$du_tree_stderr" ]]; then
     add_warning "Directory usage skipped some paths due to permission or filesystem errors."
 fi
 
